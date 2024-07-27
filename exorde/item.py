@@ -9,6 +9,7 @@ from typing import Callable
 import uuid
 from datetime import datetime
 import traceback
+import concurrent.futures
 from exorde.create_error_identifier import create_error_identifier
 from exorde.get_module_version import get_module_version
 
@@ -56,13 +57,15 @@ async def choose_module(command_line_arguments, counter, websocket_send):
 import asyncio
 
 
+import concurrent.futures
+
 async def consumer(
     iterator, websocket_send, intent_id, counter, module, domain, error_count
 ):
     while True:
         await asyncio.sleep(0.1)
         try:
-            item = await asyncio.wait_for(iterator.__anext__(), timeout=120)
+            item = await asyncio.wait_for(iterator.__anext__(), timeout=1200)
             if isinstance(item, Item):
                 await websocket_send(
                     {
@@ -85,15 +88,13 @@ async def consumer(
             else:
                 continue
 
-        except GeneratorExit:   
+        except GeneratorExit:
             raise
-        except TimeoutError:
+        except concurrent.futures._base.TimeoutError:
+            logging.info(f"End of iterator {module.__name__} - TimeoutError")
             raise GeneratorExit
         except StopAsyncIteration:
             logging.info(f"End of iterator {module.__name__} - StopAsyncIteration")
-            raise GeneratorExit
-        except asyncio.TimeoutError:
-            logging.info(f"End of iterator {module.__name__} - TimeoutError")
             raise GeneratorExit
         except Exception as e:
             traceback_list = traceback.format_exception(
@@ -127,6 +128,7 @@ async def consumer(
                 error_count[domain] = 0
             error_count[domain] += 1
             raise GeneratorExit
+
 
 
 async def get_item(
