@@ -227,3 +227,4 @@ async def process_batch(
     aggregated = [merge_chunks(values) for values in complete_processes.values() if merge_chunks(values)]
     result_batch = Batch(items=aggregated, kind=BatchKindEnum.SPOTTING)
     return result_batch
+
