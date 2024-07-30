@@ -56,69 +56,69 @@ async def choose_module(command_line_arguments, counter, websocket_send):
 async def consumer(
     iterator, websocket_send, intent_id, counter, module, domain, error_count
 ):
-    while True:
-        await asyncio.sleep(0.1)
-        try:
-            item = await asyncio.wait_for(iterator.__anext__(), timeout=120)
-            if isinstance(item, Item):
-                await websocket_send(
-                    {
-                        "intents": {
-                            intent_id: {
-                                "collections": {
-                                    str(uuid.uuid4()): {
-                                        "url": str(item.url),
-                                        "end": datetime.now().strftime(
-                                            "%Y-%m-%d %H:%M:%S"
-                                        ),
+    try:
+        while True:
+            await asyncio.sleep(0.1)
+            try:
+                item = await asyncio.wait_for(iterator.__anext__(), timeout=120)
+                if isinstance(item, Item):
+                    await websocket_send(
+                        {
+                            "intents": {
+                                intent_id: {
+                                    "collections": {
+                                        str(uuid.uuid4()): {
+                                            "url": str(item.url),
+                                            "end": datetime.now().strftime(
+                                                "%Y-%m-%d %H:%M:%S"
+                                            ),
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                )
-                await counter.increment(domain)
-                yield item
-            else:
+                    )
+                    await counter.increment(domain)
+                    yield item
+                else:
+                    continue
+            except StopAsyncIteration:
+                logging.info(f"End of iterator {module.__name__} - StopAsyncIteration")
+                break
+            except asyncio.TimeoutError:
+                logging.info(f"TimeoutError for {module.__name__}, continuing...")
                 continue
-        except StopAsyncIteration:
-            logging.info(f"End of iterator {module.__name__} - StopAsyncIteration")
-            break
-        except asyncio.TimeoutError:
-            logging.info(f"TimeoutError for {module.__name__}, continuing...")
-            continue
-        except GeneratorExit:
-            logging.info(f"GeneratorExit received for {module.__name__}, exiting...")
-            break
-        except Exception as e:
-            traceback_list = traceback.format_exception(type(e), e, e.__traceback__)
-            error_id = create_error_identifier(traceback_list)
-            try:
-                await websocket_send(
-                    {
-                        "intents": {intent_id: {"errors": {error_id: {}}}},
-                        "modules": {module.__name__: {"errors": {error_id: {}}}},
-                        "errors": {
-                            error_id: {
-                                "traceback": traceback_list,
-                                "module": module.__name__,
-                                "intents": {
-                                    intent_id: {
-                                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"): {}
-                                    }
-                                },
-                            }
-                        },
-                    }
-                )
-            except Exception as websocket_error:
-                logging.error(f"Failed to send error to websocket: {websocket_error}")
+            except Exception as e:
+                traceback_list = traceback.format_exception(type(e), e, e.__traceback__)
+                error_id = create_error_identifier(traceback_list)
+                try:
+                    await websocket_send(
+                        {
+                            "intents": {intent_id: {"errors": {error_id: {}}}},
+                            "modules": {module.__name__: {"errors": {error_id: {}}}},
+                            "errors": {
+                                error_id: {
+                                    "traceback": traceback_list,
+                                    "module": module.__name__,
+                                    "intents": {
+                                        intent_id: {
+                                            datetime.now().strftime("%Y-%m-%d %H:%M:%S"): {}
+                                        }
+                                    },
+                                }
+                            },
+                        }
+                    )
+                except Exception as websocket_error:
+                    logging.error(f"Failed to send error to websocket: {websocket_error}")
 
-            logging.exception(f"An error occurred retrieving an item using {module}: {e}")
-            if domain not in error_count:
-                error_count[domain] = 0
-            error_count[domain] += 1
-            continue
+                logging.exception(f"An error occurred retrieving an item using {module}: {e}")
+                if domain not in error_count:
+                    error_count[domain] = 0
+                error_count[domain] += 1
+                continue
+    except GeneratorExit:
+        logging.info(f"GeneratorExit received for {module.__name__}, closing consumer.")
 
 
 async def get_item(
