@@ -9,10 +9,9 @@ from typing import Callable
 import uuid
 from datetime import datetime
 import traceback
-import concurrent.futures
 from exorde.create_error_identifier import create_error_identifier
 from exorde.get_module_version import get_module_version
-
+import asyncio
 
 async def choose_module(command_line_arguments, counter, websocket_send):
     intent_id = str(uuid.uuid4())
@@ -50,14 +49,9 @@ async def choose_module(command_line_arguments, counter, websocket_send):
 
     except Exception as error:
         await websocket_send({"intents": {intent_id: {"error": str(error)}}})
-        logging.exception(f"An error occured in the brain function")
+        logging.exception(f"An error occurred in the brain function")
         raise error
 
-
-import asyncio
-
-
-import concurrent.futures
 
 async def consumer(
     iterator, websocket_send, intent_id, counter, module, domain, error_count
@@ -65,7 +59,7 @@ async def consumer(
     while True:
         await asyncio.sleep(0.1)
         try:
-            item = await asyncio.wait_for(iterator.__anext__(), timeout=1200)
+            item = await asyncio.wait_for(iterator.__anext__(), timeout=120)
             if isinstance(item, Item):
                 await websocket_send(
                     {
@@ -87,48 +81,44 @@ async def consumer(
                 yield item
             else:
                 continue
-
-        except GeneratorExit:
-            raise
-        except concurrent.futures._base.TimeoutError:
-            logging.info(f"End of iterator {module.__name__} - TimeoutError")
-            raise GeneratorExit
         except StopAsyncIteration:
             logging.info(f"End of iterator {module.__name__} - StopAsyncIteration")
-            raise GeneratorExit
+            break
+        except asyncio.TimeoutError:
+            logging.info(f"TimeoutError for {module.__name__}, continuing...")
+            continue
+        except GeneratorExit:
+            logging.info(f"GeneratorExit received for {module.__name__}, exiting...")
+            break
         except Exception as e:
-            traceback_list = traceback.format_exception(
-                type(e), e, e.__traceback__
-            )
+            traceback_list = traceback.format_exception(type(e), e, e.__traceback__)
             error_id = create_error_identifier(traceback_list)
-            await websocket_send(
-                {
-                    "intents": {intent_id: {"errors": {error_id: {}}}},
-                    "modules": {module.__name__: {"errors": {error_id: {}}}},
-                    "errors": {
-                        error_id: {
-                            "traceback": traceback_list,
-                            "module": module.__name__,
-                            "intents": {
-                                intent_id: {
-                                    datetime.now().strftime(
-                                        "%Y-%m-%d %H:%M:%S"
-                                    ): {}
-                                }
-                            },
-                        }
-                    },
-                }
-            )
-            logging.exception(
-                f"An error occured retrieving an item: %s using {module}",
-                e,
-            )
-            if not error_count.get(domain, None):
+            try:
+                await websocket_send(
+                    {
+                        "intents": {intent_id: {"errors": {error_id: {}}}},
+                        "modules": {module.__name__: {"errors": {error_id: {}}}},
+                        "errors": {
+                            error_id: {
+                                "traceback": traceback_list,
+                                "module": module.__name__,
+                                "intents": {
+                                    intent_id: {
+                                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"): {}
+                                    }
+                                },
+                            }
+                        },
+                    }
+                )
+            except Exception as websocket_error:
+                logging.error(f"Failed to send error to websocket: {websocket_error}")
+
+            logging.exception(f"An error occurred retrieving an item using {module}: {e}")
+            if domain not in error_count:
                 error_count[domain] = 0
             error_count[domain] += 1
-            raise GeneratorExit
-
+            continue
 
 
 async def get_item(
@@ -165,3 +155,4 @@ async def get_item(
                 yield item
         except:
             pass
+
