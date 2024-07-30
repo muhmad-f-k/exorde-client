@@ -5,16 +5,13 @@ import traceback
 from datetime import datetime
 from enum import Enum
 from typing import Callable, Union
-
 from exorde.create_error_identifier import create_error_identifier
-
 
 class EnumEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Enum):
             return obj.name  # Serialize Enum value as its name
         return str(super().default(obj))
-
 
 async def upload_to_ipfs(
     value,
@@ -28,30 +25,25 @@ async def upload_to_ipfs(
             async with aiohttp.ClientSession() as session:
                 _value = json.dumps(
                     value, cls=EnumEncoder
-                )  # Make sure EnumEncoder is defined
+                )
                 async with session.post(
                     ipfs_path,
                     data=_value,
                     headers={"Content-Type": "application/json"},
-                    timeout=90,  # Set a timeout for the request
+                    timeout=90,
                 ) as resp:
-                    logging.info(f"[IPFS API Initial trace] Response status = {resp.status}, content = {await resp.text()}")
-                    # if empty content in response, raise exception
-                    if "empty content" in await resp.text():
+                    response_text = await resp.text()
+                    logging.info(f"[IPFS API Initial trace] Response status = {resp.status}, content = {response_text}")
+                    if "empty content" in response_text:
                         empty_content_flag = True
-                        raise Exception(
-                            "[IPFS API] Upload failed because items are too old"
-                        )
+                        raise Exception("[IPFS API] Upload failed because items are too old")
                     if resp.status == 200:
                         logging.debug("Upload to IPFS succeeded")
                         response = await resp.json()
-                        logging.info(
-                            f"[IPFS API] Success, response = {response}"
-                        )
+                        logging.info(f"[IPFS API] Success, response = {response}")
                         return response["cid"]
                     if resp.status == 500:
-                        text = await resp.text()
-                        error_identifier = create_error_identifier([text])
+                        error_identifier = create_error_identifier([response_text])
                         await websocket_send(
                             {
                                 "jobs": {
@@ -61,7 +53,7 @@ async def upload_to_ipfs(
                                                 "attempts": {
                                                     i: {
                                                         "status": resp.status,
-                                                        "text": text,
+                                                        "text": response_text,
                                                     }
                                                 }
                                             }
@@ -70,37 +62,26 @@ async def upload_to_ipfs(
                                 },
                                 "errors": {
                                     error_identifier: {
-                                        "traceback": [text],
+                                        "traceback": [response_text],
                                         "module": "upload_to_ipfs",
                                         "intents": {
                                             job_id: {
-                                                datetime.now().strftime(
-                                                    "%Y-%m-%d %H:%M:%S"
-                                                ): {}
+                                                datetime.now().strftime("%Y-%m-%d %H:%M:%S"): {}
                                             }
                                         },
                                     }
                                 },
                             }
                         )
-                        logging.error(
-                            f"[IPFS API - Error 500] API rejection: {text}"
-                        )
-                        if text == "empty content":
+                        logging.error(f"[IPFS API - Error 500] API rejection: {response_text}")
+                        if response_text == "empty content":
                             empty_content_flag = True
-                            raise Exception(
-                                "[IPFS API] Upload failed because items are too old"
-                            )
-                        await asyncio.sleep(i * 1.5)  # Adjust sleep factor
-                        logging.info(
-                            f"Failed upload, retrying ({i + 1}/5)"
-                        )  # Update retry count
-                        continue  # Retry after handling the error
+                            raise Exception("[IPFS API] Upload failed because items are too old")
+                        await asyncio.sleep(i * 1.5)
+                        logging.info(f"Failed upload, retrying ({i + 1}/5)")
+                        continue
                     else:
-                        error_text = await resp.text()
-                        error_identifier = create_error_identifier(
-                            [error_text]
-                        )
+                        error_identifier = create_error_identifier([response_text])
                         await websocket_send(
                             {
                                 "jobs": {
@@ -110,7 +91,7 @@ async def upload_to_ipfs(
                                                 "attempts": {
                                                     i: {
                                                         "status": resp.status,
-                                                        "text": error_text,
+                                                        "text": response_text,
                                                     }
                                                 }
                                             }
@@ -119,35 +100,26 @@ async def upload_to_ipfs(
                                 },
                                 "errors": {
                                     error_identifier: {
-                                        "traceback": [error_text],
+                                        "traceback": [response_text],
                                         "module": "upload_to_ipfs",
                                         "intents": {
                                             job_id: {
-                                                datetime.now().strftime(
-                                                    "%Y-%m-%d %H:%M:%S"
-                                                ): {}
+                                                datetime.now().strftime("%Y-%m-%d %H:%M:%S"): {}
                                             }
                                         },
                                     }
                                 },
                             }
                         )
-
-                        logging.info(
-                            f"[IPFS API] Failed, response status = {resp.status}, text = {error_text}"
-                        )
+                        logging.info(f"[IPFS API] Failed, response status = {resp.status}, text = {response_text}")
 
         except Exception as e:
             if empty_content_flag:
                 break
             logging.exception(f"[IPFS API] Error: {e}")
-            await asyncio.sleep(i * 1.5)  # Adjust sleep factor
-            # Retrieve and format the traceback as a list of strings
-            traceback_list = traceback.format_exception(
-                type(e), e, e.__traceback__
-            )
+            await asyncio.sleep(i * 1.5)
+            traceback_list = traceback.format_exception(type(e), e, e.__traceback__)
             error_identifier = create_error_identifier(traceback_list)
-
             await websocket_send(
                 {
                     "jobs": {
@@ -170,21 +142,16 @@ async def upload_to_ipfs(
                             "module": "upload_to_ipfs",
                             "intents": {
                                 job_id: {
-                                    datetime.now().strftime(
-                                        "%Y-%m-%d %H:%M:%S"
-                                    ): {}
+                                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"): {}
                                 }
                             },
                         }
                     },
                 }
             )
+            logging.info(f"Failed upload, retrying ({i + 1}/5)")
 
-            logging.info(
-                f"Failed upload, retrying ({i + 1}/5)"
-            )  # Update retry count
-
-    if empty_content_flag == False:
+    if not empty_content_flag:
         await websocket_send(
             {
                 "jobs": {
@@ -194,9 +161,7 @@ async def upload_to_ipfs(
                 }
             }
         )
-
         raise Exception("Failed to upload to IPFS")
-
 
 def rotate_gateways():
     gateways = [
@@ -208,18 +173,11 @@ def rotate_gateways():
         "http://ipfs-gateway.exorde.network/ipfs/",
         "http://ipfs-gateway.exorde.network/ipfs/",
         "http://ipfs-gateway.exorde.network/ipfs/",
-        # "https://w3s.link/ipfs/",
-        # "https://ipfs.io/ipfs/",
-        # "https://ipfs.eth.aragon.network/ipfs/",
-        # "https://api.ipfsbrowser.com/ipfs/get.php?hash=",
     ]
-
     return (gateways[i % len(gateways)] for i in itertools.count())
-
 
 class DownloadError(Exception):
     pass
-
 
 async def download_ipfs_file(cid: str, max_attempts: int = 5) -> dict:
     headers = {
@@ -253,8 +211,7 @@ async def download_ipfs_file(cid: str, max_attempts: int = 5) -> dict:
                     error.__class__.__name__,
                     error,
                 )
-            await asyncio.sleep(i * 1.5)  # Adjust sleep factor
+            await asyncio.sleep(i * 1.5)
 
-    raise DownloadError(
-        "Failed to download file from IPFS after multiple attempts"
-    )
+    raise DownloadError("Failed to download file from IPFS after multiple attempts")
+
