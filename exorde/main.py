@@ -84,22 +84,22 @@ async def main(command_line_arguments: argparse.Namespace):
         cursor += 1
         if cursor == 10:
             cursor = 0
-            if cursor % 3 == 0:
-                await log_user_rep(command_line_arguments)
-                await self_update()
-                live_configuration = await update_live_configuration()
-            await docker_version_notifier(
-                live_configuration, command_line_arguments
-            )
-            await last_notification(live_configuration, command_line_arguments)
-            await run_job(
-                command_line_arguments,
-                spotting,
-                live_configuration,
-                static_configuration,
-                counter,
-                websocket_send,
-            )
+        if cursor % 3 == 0:
+            await log_user_rep(command_line_arguments)
+            await self_update()
+            live_configuration = await update_live_configuration()
+        await docker_version_notifier(
+            live_configuration, command_line_arguments
+        )
+        await last_notification(live_configuration, command_line_arguments)
+        await run_job(
+            command_line_arguments,
+            spotting,
+            live_configuration,
+            static_configuration,
+            counter,
+            websocket_send,
+        )
 
 
 def run():
@@ -110,7 +110,7 @@ def run():
     except KeyboardInterrupt:
         logging.info("Exiting exorde-client...")
     except Exception:
-        logging.exception("A critical error occured")
+        logging.exception("A critical error occurred")
 
 
 if __name__ == "__main__":
