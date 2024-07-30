@@ -88,6 +88,9 @@ async def consumer(
             except asyncio.TimeoutError:
                 logging.info(f"TimeoutError for {module.__name__}, continuing...")
                 continue
+            except GeneratorExit:
+                logging.info(f"GeneratorExit received for {module.__name__}, closing consumer.")
+                break
             except Exception as e:
                 traceback_list = traceback.format_exception(type(e), e, e.__traceback__)
                 error_id = create_error_identifier(traceback_list)
@@ -155,4 +158,3 @@ async def get_item(
                 yield item
         except:
             pass
-
