@@ -46,12 +46,10 @@ async def choose_module(command_line_arguments, counter, websocket_send):
         )
         iterator = module.query(parameters).__aiter__()
         return (iterator, module, parameters, domain, intent_id)
-
     except Exception as error:
         await websocket_send({"intents": {intent_id: {"error": str(error)}}})
         logging.exception(f"An error occurred in the brain function")
         raise error
-
 
 async def consumer(
     iterator, websocket_send, intent_id, counter, module, domain, error_count
@@ -122,40 +120,26 @@ async def consumer(
                 continue
     except GeneratorExit:
         logging.info(f"GeneratorExit received for {module.__name__}, closing consumer.")
-
+    except Exception as e:
+        logging.exception(f"Unexpected exception in consumer: {e}")
 
 async def get_item(
     command_line_arguments: argparse.Namespace,
     counter: AsyncItemCounter,
     websocket_send: Callable,
 ) -> AsyncGenerator[Item, None]:
-    """
-    1. Retrieve module & domain using `brain.think`
-    2. Use module.query AsyncGenerator to retrieve items
-    """
     module: ModuleType
     error_count: dict[ModuleType, int] = {}
     while True:
-        (
-            iterator,
-            module,
-            __parameters__,
-            domain,
-            intent_id,
-        ) = await choose_module(
+        iterator, module, __parameters__, domain, intent_id = await choose_module(
             command_line_arguments, counter, websocket_send
         )
         try:
             async for item in consumer(
-                iterator,
-                websocket_send,
-                intent_id,
-                counter,
-                module,
-                domain,
-                error_count,
+                iterator, websocket_send, intent_id, counter, module, domain, error_count
             ):
                 yield item
-        except:
-            pass
+        except Exception as e:
+            logging.exception("Exception occurred in get_item")
+
 
