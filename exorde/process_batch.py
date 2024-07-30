@@ -3,50 +3,23 @@ from importlib import metadata
 from datetime import datetime
 import numpy as np
 from exorde.models import (
-    Domain,
-    ProtocolItem,
-    ProtocolAnalysis,
-    ProcessedItem,
-    Batch,
-    BatchKindEnum,
-    CollectionClientVersion,
-    CollectedAt,
-    CollectionModule,
-    Processed,
-    Analysis,
-)
-from exorde.models import (
-    Classification,
-    Keywords,
-    LanguageScore,
-    Sentiment,
-    Embedding,
-    SourceType,
-    TextType,
-    Emotion,
-    Irony,
-    Age,
-    Gender,
-    Analysis
+    ProtocolItem, ProtocolAnalysis, ProcessedItem, Batch, BatchKindEnum, 
+    CollectionClientVersion, CollectedAt, CollectionModule, Processed, Analysis,
+    Classification, Keywords, LanguageScore, Sentiment, Embedding, SourceType, 
+    TextType, Emotion, Irony, Age, Gender
 )
 from exorde_data import Url, Content
-
 from exorde.tag import tag
 from collections import Counter
-
 
 def Most_Common(lst):
     data = Counter(lst)
     return data.most_common(1)[0][0]
 
-
 def merge_chunks(chunks: list[ProcessedItem]) -> ProcessedItem:
     try:
-        ## Check if chunks is a list of 1 item, if so, just return it as is
         if len(chunks) == 1:
             return chunks[0]
-
-        #### MERGING for items with more than 1 chunks
 
         categories_list = []
         top_keywords_list = []
@@ -75,33 +48,23 @@ def merge_chunks(chunks: list[ProcessedItem]) -> ProcessedItem:
             age_list.append(item_analysis_.age)
             embedding_list.append(item_analysis_.embedding)
 
-        ## AGGREGATED VALUES
-        ## -> classification: take the majority
         most_common_category = Most_Common([x.label for x in categories_list])
         category_aggregated = Classification(
             label=most_common_category,
             score=max([x.score for x in categories_list]),
         )
-        ## -> top_keywords: concatenate lists
-        top_keywords_aggregated = list()
-        for top_keywords in top_keywords_list:
-            top_keywords_aggregated.extend(top_keywords)
-        top_keywords_aggregated = Keywords(
-            list(set(top_keywords_aggregated))
-        )  # filter duplicates
-        ## -> gender: Take the median tuple
+
+        top_keywords_aggregated = list(set([kw for kws in top_keywords_list for kw in kws]))
+        
         gender_aggregated = Gender(
             male=np.median([x.male for x in gender_list]),
             female=np.median([x.female for x in gender_list]),
         )
-        ## -> sentiment: Take the median all sentiments
-        sentiment_aggregated = Sentiment(np.median(sentiment_list))
-        ## -> source_type: Take the majority of source_type (if there is a tie, take "social"). Possible values = "social" or "news"
-        source_type_aggregated =  SourceType(
-            Most_Common(source_type_list)
-        )
         
-        ## -> text_type: Take the median
+        sentiment_aggregated = Sentiment(np.median(sentiment_list))
+        
+        source_type_aggregated = SourceType(Most_Common(source_type_list))
+        
         text_type_aggregated = TextType(
             assumption=np.median([tt.assumption for tt in text_type_list]),
             anecdote=np.median([tt.anecdote for tt in text_type_list]),
@@ -111,7 +74,7 @@ def merge_chunks(chunks: list[ProcessedItem]) -> ProcessedItem:
             other=np.median([tt.other for tt in text_type_list]),
             study=np.median([tt.study for tt in text_type_list]),
         )
-        ## -> emotion: Take the median
+        
         emotion_aggregated = Emotion(
             love=np.median([e.love for e in emotion_list]),
             admiration=np.median([e.admiration for e in emotion_list]),
@@ -141,37 +104,31 @@ def merge_chunks(chunks: list[ProcessedItem]) -> ProcessedItem:
             sadness=np.median([e.sadness for e in emotion_list]),
             nervousness=np.median([e.nervousness for e in emotion_list]),
         )
-        ## -> language_score: Take the median
-        language_score_aggregated = LanguageScore(
-            np.median(language_score_list)
-        )
-        ## -> irony: Take the median
+        
+        language_score_aggregated = LanguageScore(np.median(language_score_list))
+        
         irony_aggregated = Irony(
             irony=np.median([i.irony for i in irony_list]),
             non_irony=np.median([i.non_irony for i in irony_list]),
         )
-        ## -> age: Take the median
+        
         age_aggregated = Age(
             below_twenty=np.median([a.below_twenty for a in age_list]),
             twenty_thirty=np.median([a.twenty_thirty for a in age_list]),
             thirty_forty=np.median([a.thirty_forty for a in age_list]),
             forty_more=np.median([a.forty_more for a in age_list]),
         )
-        ## -> embedding: take closest vector to centroid
+        
         centroid_vector = np.median(embedding_list, axis=0)
-        # Calculate the closest vector in embedding_list to the centroid_vector
         closest_embedding = Embedding(
-            min(
-                embedding_list,
-                key=lambda x: np.linalg.norm(x - centroid_vector),
-            )
+            min(embedding_list, key=lambda x: np.linalg.norm(x - centroid_vector))
         )
-        ####   --- REBUILD MERGED ITEM
+
         merged_item = ProcessedItem(
             item=chunks[0].item,
             analysis=ProtocolAnalysis(
                 classification=category_aggregated,
-                top_keywords=top_keywords_aggregated,
+                top_keywords=Keywords(top_keywords_aggregated),
                 language_score=language_score_aggregated,
                 gender=gender_aggregated,
                 sentiment=sentiment_aggregated,
@@ -191,51 +148,35 @@ def merge_chunks(chunks: list[ProcessedItem]) -> ProcessedItem:
         merged_item = None
     return merged_item
 
-
 SOCIAL_DOMAINS = [
-    "4chan",
-    "4channel.org",
-    "reddit.com",
-    "twitter.com",
-    "t.com",
-    "x.com",
-    "youtube.com",
-    "yt.co",
-    "lemmy.world",
-    "mastodon.social",
-    "mastodon",
-    "weibo.com",
-    "nostr.social",
-    "nostr.com",
-    "jeuxvideo.com",
-    "forocoches.com",
-    "bitcointalk.org",
-    "ycombinator.com",
-    "news.ycombinator.com",
-    "tradingview.com",
-    "followin.in",
-    "seekingalpha.io",
+    "4chan", "4channel.org", "reddit.com", "twitter.com", "t.com", "x.com", "youtube.com", 
+    "yt.co", "lemmy.world", "mastodon.social", "mastodon", "weibo.com", "nostr.social", 
+    "nostr.com", "jeuxvideo.com", "forocoches.com", "bitcointalk.org", "ycombinator.com", 
+    "news.ycombinator.com", "tradingview.com", "followin.in", "seekingalpha.io",
 ]
-
 
 def get_source_type(item: ProtocolItem) -> SourceType:
     if item.domain in SOCIAL_DOMAINS:
         return SourceType("social")
     return SourceType("news")
 
-
 async def process_batch(
     batch: list[tuple[int, Processed]], static_configuration
 ) -> Batch:
     lab_configuration: dict = static_configuration["lab_configuration"]
-    logging.info(f"running batch for {len(batch)}")
-    analysis_results: list[Analysis] = tag(
-        [processed.translation.translation for (__id__, processed) in batch],
-        lab_configuration,
-    )
-    complete_processes: dict[int, list[ProcessedItem]] = {}
+    logging.info(f"Running batch for {len(batch)} items.")
+    try:
+        analysis_results = tag(
+            [processed.translation.translation for (__id__, processed) in batch],
+            lab_configuration,
+        )
+    except Exception as e:
+        logging.exception(f"Failed to tag batch: {e}")
+        return Batch(items=[], kind=BatchKindEnum.SPOTTING)
+
+    complete_processes = {}
     for (id, processed), analysis in zip(batch, analysis_results):
-        prot_item: ProtocolItem = ProtocolItem(
+        prot_item = ProtocolItem(
             raw_content=Content(processed.raw_content),
             translated_content=Content(processed.translation.translation),
             created_at=processed.item.created_at,
@@ -256,7 +197,8 @@ async def process_batch(
             prot_item.external_id = processed.item.external_id
         if processed.item.external_parent_id:
             prot_item.external_parent_id = processed.item.external_parent_id
-        completed: ProcessedItem = ProcessedItem(
+
+        completed = ProcessedItem(
             item=prot_item,
             analysis=ProtocolAnalysis(
                 classification=processed.classification,
@@ -277,13 +219,11 @@ async def process_batch(
             collection_module=CollectionModule("unknown"),
             collected_at=CollectedAt(datetime.now().isoformat() + "Z"),
         )
-        if not complete_processes.get(id, {}):
+
+        if id not in complete_processes:
             complete_processes[id] = []
         complete_processes[id].append(completed)
-    aggregated = []
-    for __key__, values in complete_processes.items():
-        merged_ = merge_chunks(values)
-        if merged_ is not None:
-            aggregated.append(merged_)
-    result_batch: Batch = Batch(items=aggregated, kind=BatchKindEnum.SPOTTING)
+
+    aggregated = [merge_chunks(values) for values in complete_processes.values() if merge_chunks(values)]
+    result_batch = Batch(items=aggregated, kind=BatchKindEnum.SPOTTING)
     return result_batch
